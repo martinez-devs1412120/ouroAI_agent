@@ -144,18 +144,23 @@ class Spinner:
 # Two-column layout: hand-drawn ouroAI mark on the left, machine + agent
 # info on the right. A real color palette block at the bottom. Falls back
 # gracefully to a single-column stacked layout on narrow terminals.
+#
+# A previous version used `▄`-block Unicode art that rendered as huge blobs
+# in some terminals and overran the right column. Lesson: ASCII-only art is
+# the only art that renders identically everywhere. The mark below is plain
+# `/-\|` characters — it will look the same on any terminal you run it on.
 
 OURO_LOGO = [
-    r"          ▄▄          ",
-    r"        ▄████▄        ",
-    r"      ▄██████▀        ",
-    r"    ▄██████▀     ◉ ouroAI",
-    r"  ▄██████▀           from-scratch agent",
-    r"▄██████▀                ",
-    r"  ▀███▀                ",
-    r"    ▀                 ",
-    r"                      ",
-    r"  one brain, ten hands ",
+    r"    ____                    ",
+    r"   / __ \                   ",
+    r"  | |  | |_   _  ___ _ __   ",
+    r"  | |  | | | | |/ _ \ '__|  ",
+    r"  | |__| | |_| |  __/ |     ",
+    r"   \____/ \__, |\___|_|     ",
+    r"           __/ |            ",
+    r"          |___/             ",
+    r"                            ",
+    r"  one brain, ten hands      ",
 ]
 
 OURO_PALETTE = [
@@ -169,16 +174,20 @@ OURO_PALETTE = [
     ("37", "47", "97", "107", "137", "147", "187", "197"),
 ]
 
+LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
+
 
 def _swatch(ansi_code: str) -> str:
     """A small colored block for a single ANSI background code."""
     if not COLOR:
-        return "█"  # plain run: just show shape, no color
+        return " " * 2  # plain run: 2 spaces, no shape
     return f"\x1b[{ansi_code}m  \x1b[0m"
 
 
 def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
-    """Right-hand column: model, host, runtime, skill summary."""
+    """Right-hand column: model, host, runtime, skill summary. Each label
+    is exactly 8 chars so the values line up vertically (the alignment bug
+    in the previous version came from variable-width labels)."""
     import os
     import platform
     try:
@@ -187,40 +196,45 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
         host = "?"
     user = os.environ.get("USERNAME") or os.environ.get("USER") or "?"
     py = platform.python_version()
+    cwd = os.getcwd()
+    if len(cwd) > 30:
+        cwd = "..." + cwd[-27:]
     tool_names = sorted(tools)
-    tools_line = ", ".join(tool_names)
-    if len(tools_line) > 36:
-        tools_line = ", ".join(t[:6] for t in tool_names)[:36] + "..."
+    tools_line = ", ".join(t[:7] for t in tool_names)
+    if len(tools_line) > 40:
+        tools_line = tools_line[:40] + "..."
+    skills_line = ", ".join(skills)
+    if len(skills_line) > 40:
+        skills_line = skills_line[:40] + "..."
+
+    userhost = paint(user, BOLD) + paint("@", DIM) + paint(host, BOLD)
     return [
-        paint(f"{user}", BOLD) + paint("@", DIM) + paint(f"{host}", BOLD),
+        userhost,
         "",
-        paint("─" * 38, DIM),
-        paint("  ouroAI", BOLD),
-        paint(f"  model   {model}", DIM),
-        paint(f"  python  {py}", DIM),
-        paint(f"  cwd     {os.getcwd()[:30]}", DIM),
-        paint("─" * 38, DIM),
-        paint(f"  skills  {', '.join(skills)[:32]}", DIM),
-        paint(f"  tools   {tools_line}", DIM),
+        paint("─" * 42, DIM),
+        paint("  ouroAI · from-scratch agent", BOLD),
+        paint(f"  model    {model}", DIM),
+        paint(f"  python   {py}", DIM),
+        paint(f"  cwd      {cwd}", DIM),
+        paint(f"  skills   {skills_line}", DIM),
+        paint(f"  tools    {tools_line}", DIM),
         paint("  commands reset · quit", DIM),
     ]
 
 
 def _palette_block() -> list[str]:
-    """A 2-row color preview so the user sees what their terminal is doing."""
-    rows = []
-    for row in OURO_PALETTE[:4]:
-        rows.append("  " + "".join(_swatch(c) for c in row))
-    return rows
+    """A full 16-color preview (8 ANSI x 2 rows: normal + bright)."""
+    return ["  " + "".join(_swatch(c) for c in row) for row in OURO_PALETTE]
 
 
 def banner(model: str, tools: dict, skills: list[str]) -> None:
     """Two-column neofetch-style header. Falls back to a single column on
     narrow terminals or piped output (where alignment is impossible)."""
     info = _info_block(model, tools, skills)
-    width = shutil.get_terminal_size((100, 20)).columns  # default to 100
-    if not COLOR or width < 70:
-        # Single-column fallback: logo on top, info below.
+    width = shutil.get_terminal_size((100, 20)).columns
+
+    if not COLOR or width < (LOGO_WIDTH + 4 + 42):
+        # Single-column fallback: logo on top, info below, palette last.
         for line in OURO_LOGO:
             print(line)
         print()
@@ -232,11 +246,17 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
         print()
         return
 
-    # Two-column layout: print the logo and info side by side.
+    # Two-column layout. KEY FIX: pad the LEFT column to LOGO_WIDTH on every
+    # row (not just the ones shorter than that), so the right column always
+    # starts at the same x position. Without this, mixed-width logo lines
+    # cause the right column to drift left and right per row.
     pad = 4
     rows = max(len(OURO_LOGO), len(info))
     for i in range(rows):
-        left = OURO_LOGO[i] if i < len(OURO_LOGO) else " " * 22
+        if i < len(OURO_LOGO):
+            left = OURO_LOGO[i].ljust(LOGO_WIDTH)
+        else:
+            left = " " * LOGO_WIDTH
         right = info[i] if i < len(info) else ""
         print(f"{paint(left, CYAN)}{' ' * pad}{right}")
     print()
