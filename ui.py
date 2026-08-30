@@ -141,22 +141,13 @@ class Spinner:
 
 # ---------------- neofetch-style banner ----------------
 #
-# Layout: a SPLASH art (full-width, generated from assets/pixil2.jpg via
-# tools/make_splash.py) sits on top. Below it, the existing two-column
-# ouroboros-ring + machine-info block.
-#
-# Why a full-width splash instead of squeezing the art into the 22-char
-# left column: pixel art in a narrow column becomes gray mush. The
-# landscape wants 80+ columns to read; giving it the full width is the
-# only honest way to show it.
+# Two-column layout: the ouroboros emblem on the left, machine + agent
+# info on the right. Info text uses a white + dim-gray combination so
+# the most relevant fields (model, user) stand out and the rest
+# recedes. The earlier splash, palette, and tagline were removed for
+# visual calm — what survived is the only thing that earns its space.
 
 from pathlib import Path as _Path
-
-_SPLASH_PATH = _Path(__file__).parent / "assets" / "splash.txt"
-if _SPLASH_PATH.exists():
-    SPLASH = _SPLASH_PATH.read_text(encoding="utf-8").rstrip().splitlines()
-else:
-    SPLASH = []  # graceful fallback if the file is missing
 
 
 # Emblem: a coverage-ramp rendering of the Ouroboros art (assets/ouroboros.png).
@@ -170,17 +161,15 @@ _EMBLEM = (_EMBLEM_PATH.read_text(encoding="utf-8").rstrip().splitlines()
 OURO_LOGO = _EMBLEM + [
     "",
     "     o  u  r  o",
-    "",
-    " one brain, ten hands",
 ]
 
 LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
 
 
 def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
-    """Right-hand column: model, host, runtime, skill summary. Each label
-    is exactly 8 chars so the values line up vertically (the alignment bug
-    in the previous version came from variable-width labels)."""
+    """Right-hand column. White for the values (the things you want to see),
+    dim gray for the labels (the things that frame them). One bright
+    header line so the user knows what they're looking at."""
     import os
     import platform
     try:
@@ -200,32 +189,29 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     if len(skills_line) > 40:
         skills_line = skills_line[:40] + "..."
 
+    # The user/host line and the header are the only BOLD lines; the rest
+    # use plain text for values, dim for labels. The contrast carries the
+    # hierarchy without needing any other decoration.
     userhost = paint(user, BOLD) + paint("@", DIM) + paint(host, BOLD)
     return [
         userhost,
         "",
         paint("─" * 42, DIM),
-        paint("  ouroAI · from-scratch agent", BOLD),
-        paint(f"  model    {model}", DIM),
-        paint(f"  python   {py}", DIM),
-        paint(f"  cwd      {cwd}", DIM),
-        paint(f"  skills   {skills_line}", DIM),
-        paint(f"  tools    {tools_line}", DIM),
-        paint("  commands reset · quit", DIM),
+        paint("ouroAI", BOLD) + paint("  from-scratch agent", DIM),
+        paint("model     ", DIM) + paint(model, BOLD),
+        paint("python    ", DIM) + paint(py, BOLD),
+        paint("cwd       ", DIM) + paint(cwd, BOLD),
+        paint("skills    ", DIM) + paint(skills_line, BOLD),
+        paint("tools     ", DIM) + paint(tools_line, BOLD),
+        "",
+        paint("reset", BOLD) + paint(" · ", DIM) + paint("quit", BOLD) + paint(" · ", DIM) +
+        paint("press Ctrl+C to abort", DIM),
     ]
 
 
 def banner(model: str, tools: dict, skills: list[str]) -> None:
     """Two-column neofetch-style header. Falls back to a single column on
     narrow terminals or piped output (where alignment is impossible)."""
-    # The splash is the wide top of the banner. Truncate to terminal width so
-    # narrow terminals don't get a wrapped, broken image.
-    if SPLASH:
-        term_w = shutil.get_terminal_size((100, 20)).columns
-        for line in SPLASH:
-            print(line[:term_w])
-        print()
-
     info = _info_block(model, tools, skills)
     width = shutil.get_terminal_size((100, 20)).columns
 
