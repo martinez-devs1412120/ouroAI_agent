@@ -9,7 +9,8 @@ import datetime as _dt
 import subprocess
 import sys
 
-from skills.safe_fs.code import PLAYGROUND_ROOT, _confirm, _log
+from skills.safe_fs.code import PLAYGROUND_ROOT, _log
+from ui import confirm as _confirm, paint
 
 RUNS_DIR = PLAYGROUND_ROOT / "_runs"
 TIMEOUT_SECONDS = 15
@@ -23,9 +24,9 @@ def run_python(code: str) -> str:
 
     # Layer 3: show the human exactly what will run. No exceptions, ever.
     preview = code if len(code) <= 600 else code[:600] + f"\n... [+{len(code) - 600} more chars]"
-    print("\n  WARNING  CODE ABOUT TO RUN:")
+    print(paint("\n  CODE ABOUT TO RUN", YELLOW, BOLD) + paint("  (review carefully)", DIM))
     for line in preview.splitlines():
-        print(f"    | {line}")
+        print(paint(f"    │ {line}", YELLOW))
     if not _confirm("run_python", {"bytes": len(code)}):
         _log("run_python", {"code": code}, "user refused")
         return "user refused"

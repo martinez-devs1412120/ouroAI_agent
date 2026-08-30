@@ -18,7 +18,9 @@ it do (everything else)?*
 | `run_python` | `run_python` | Executes Python in a capped subprocess (15s timeout, output caps, always confirmed) — the agent can run code, read the traceback, and fix itself |
 
 Plus: multi-turn conversation memory, a `--skill` flag to load a subset,
-honest self-identification, and a printed trace of every tool call.
+honest self-identification, a printed trace of every tool call, and a
+hand-rolled ANSI terminal UI (banner, spinner, colored prompts) that
+auto-disables when output is piped or `NO_COLOR` is set.
 
 ## How it works (the whole trick)
 

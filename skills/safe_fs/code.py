@@ -8,6 +8,8 @@ import shutil
 import socket
 from pathlib import Path
 
+from ui import confirm as _confirm
+
 PLAYGROUND_ROOT = Path(r"C:\Users\91460\AgentPlayground")
 LOG_PATH = PLAYGROUND_ROOT / "actions.log"
 DESTRUCTIVE = {"write_file", "move", "delete", "mkdir"}
@@ -35,16 +37,6 @@ def _log(action: str, args: dict, outcome: str) -> None:
     line = f"{timestamp} | {user}@{host} | {action}({args_digest}) | {outcome}\n"
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line)
-
-
-def _confirm(action: str, args: dict) -> bool:
-    print(f"\n  WARNING  CONFIRM: about to {action}{args}")
-    print(f"           playground: {PLAYGROUND_ROOT}")
-    try:
-        reply = input("           type 'y' to allow, anything else to refuse: ").strip().lower()
-    except (KeyboardInterrupt, EOFError):
-        reply = ""
-    return reply == "y"
 
 
 def list_folder(path: str = ".") -> str:

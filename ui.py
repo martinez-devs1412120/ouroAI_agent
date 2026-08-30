@@ -1,0 +1,198 @@
+"""ui.py — everything the user SEES. Zero dependencies.
+
+Design rule this file exists to teach: agent.py decides, ui.py displays.
+The loop never calls print() directly anymore; it calls ui.something().
+When the GUI comes later, this is the one file that gets replaced.
+
+Three ideas live here:
+
+1. ANSI colors. Terminals render color when you print escape sequences —
+   "\\x1b[36m" literally means "switch to cyan from here on". The catch:
+   a piped `python agent.py < questions.txt` would spew those codes as
+   garbage text into the pipe. So colors turn themselves OFF when stdout
+   isn't a terminal (isatty) or when the NO_COLOR convention is set
+   (https://no-color.org — a real standard, respected by many tools).
+
+2. Windows needs one nudge. Classic Windows consoles ship with ANSI
+   processing OFF by default; the SetConsoleMode call below flips it on.
+   Windows Terminal (your default on Win 11) already supports ANSI, so this
+   is belt-and-suspenders — wrapped in try/except because a UI module that
+   crashes the agent on a weird terminal is worse than a plain one.
+
+3. The spinner only ever wraps the MODEL call, never a tool. Two writers
+   to one terminal line (a spinner thread + a confirm prompt waiting on
+   input) garble each other. Tools may prompt; the API call never does.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import threading
+import time
+
+# ---------------- Windows ANSI enable (before any color decision) ----------------
+
+if os.name == "nt":
+    try:
+        import ctypes
+
+        _kernel32 = ctypes.windll.kernel32
+        _handle = _kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        _mode = ctypes.c_uint32()
+        if _kernel32.GetConsoleMode(_handle, ctypes.byref(_mode)):
+            # 0x0004 = ENABLE_VIRTUAL_TERMINAL_PROCESSING
+            _kernel32.SetConsoleMode(_handle, _mode.value | 0x0004)
+    except Exception:
+        pass  # worst case: no colors, everything still works
+
+
+# ---------------- color decision ----------------
+
+def _colors_enabled() -> bool:
+    if os.environ.get("NO_COLOR") is not None:
+        return False                     # https://no-color.org
+    if os.environ.get("OURO_FORCE_COLOR"):
+        return True                      # for testing / weird terminals
+    return sys.stdout.isatty()           # a real terminal in front of a human?
+
+
+COLOR = _colors_enabled()
+
+# Every style is a full escape sequence; paint() just concatenates them.
+RESET, DIM, BOLD = "\x1b[0m", "\x1b[2m", "\x1b[1m"
+CYAN, YELLOW, MAGENTA, GREEN, RED = "\x1b[36m", "\x1b[33m", "\x1b[35m", "\x1b[32m", "\x1b[31m"
+
+
+def paint(text: str, *styles: str) -> str:
+    """Return text wrapped in the given styles, or plain if colors are off."""
+    if not COLOR or not styles:
+        return text
+    return "".join(styles) + text + RESET
+
+
+# ---------------- spinner (model thinking) ----------------
+
+_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+
+class Spinner:
+    """An animated 'thinking...' line with a live seconds counter.
+
+    Usage:
+        with Spinner("thinking"):
+            response = slow_api_call()
+
+    Renders nothing at all when colors are off (piped runs) — a spinner
+    painted into a log file is just noise.
+    """
+
+    def __init__(self, label: str = "thinking"):
+        self.label = label
+        self._stop_evt = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._t0 = 0.0
+
+    def __enter__(self) -> "Spinner":
+        self.start()
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.stop()
+
+    def start(self) -> None:
+        if not COLOR or not sys.stdout.isatty():
+            return
+        self._t0 = time.monotonic()
+        self._thread = threading.Thread(target=self._spin, daemon=True)
+        self._thread.start()
+
+    def _spin(self) -> None:
+        i = 0
+        while not self._stop_evt.wait(0.1):
+            frame = _FRAMES[i % len(_FRAMES)]
+            elapsed = time.monotonic() - self._t0
+            sys.stdout.write(
+                f"\r  {paint(frame, CYAN)} {paint(self.label, DIM)} {elapsed:5.1f}s "
+            )
+            sys.stdout.flush()
+            i += 1
+
+    def stop(self) -> None:
+        if self._thread is None:
+            return
+        self._stop_evt.set()
+        self._thread.join(timeout=1)
+        sys.stdout.write("\r" + " " * 72 + "\r")  # erase the spinner line
+        sys.stdout.flush()
+        self._thread = None
+
+
+# ---------------- widgets ----------------
+
+def banner(model: str, tools: dict, skills: list[str]) -> None:
+    """Startup box: who, what model, which skills, which commands."""
+    tool_names = ", ".join(sorted(tools))
+    if len(tool_names) > 58:
+        tool_names = tool_names[:55] + "..."
+    lines = [
+        f"ouroAI  ·  from-scratch agent",
+        f"model    {model} (groq)",
+        f"skills   {', '.join(skills)}",
+        f"tools    {tool_names}",
+        f"commands reset · quit",
+    ]
+    width = max(len(ln) for ln in lines) + 4
+    print(paint("╭" + "─" * width + "╮", DIM))
+    for ln in lines:
+        print(paint("│", DIM) + "  " + ln.ljust(width - 2) + paint("│", DIM))
+    print(paint("╰" + "─" * width + "╯", DIM))
+    print()
+
+
+def you_prompt() -> str:
+    """The colored prompt string for input()."""
+    return paint("you", CYAN, BOLD) + " " + paint("❯", DIM) + " "
+
+
+def tool_line(step: int, name: str, args: dict) -> None:
+    """One line per tool call: dim step, bold tool name, dim truncated args."""
+    pretty = json.dumps(args, ensure_ascii=False)
+    if len(pretty) > 64:
+        pretty = pretty[:64] + "…"
+    print(
+        paint(f"  step {step}", DIM)
+        + paint(" → ", DIM)
+        + paint(name, CYAN, BOLD)
+        + paint(f" {pretty}", DIM)
+    )
+
+
+def glitch_line(step: int) -> None:
+    print(paint(f"  step {step}  model glitched (malformed tool call) — retrying", YELLOW))
+
+
+def answer(text: str) -> None:
+    print()
+    print(paint("ouro", MAGENTA, BOLD) + " " + paint("❯", DIM) + " " + text)
+    print()
+
+
+def notice(text: str) -> None:
+    print(paint(f"  {text}", DIM))
+
+
+def confirm(action: str, args: dict) -> bool:
+    """The Layer-3 prompt, shared by safe_fs and run_python."""
+    detail = json.dumps(args, ensure_ascii=False)
+    if len(detail) > 58:
+        detail = detail[:58] + "…"
+    print()
+    print(paint("  ⚠ ", YELLOW, BOLD) + paint(action, YELLOW, BOLD) + paint(f"  {detail}", YELLOW))
+    print(paint("    sandboxed · type 'y' to allow, anything else to refuse", DIM))
+    try:
+        reply = input(paint("    ❯ ", YELLOW)).strip().lower()
+    except (KeyboardInterrupt, EOFError):
+        reply = ""
+    return reply == "y"
