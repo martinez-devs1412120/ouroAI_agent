@@ -3,3 +3,5 @@ python-dotenv
 ddgs
 numpy
 scikit-learn
+markdown
+Pygments
