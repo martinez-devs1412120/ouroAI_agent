@@ -16,6 +16,7 @@ it do (everything else)?*
 | `studyrag` | `query_studyrag` | Search over the user's own course notes (their separate StudyRag project) |
 | `safe_fs` | `list_folder`, `read_file`, `write_file`, `mkdir`, `move`, `delete` | Sandboxed file operations behind 4 independent safety layers |
 | `run_python` | `run_python` | Executes Python in a capped subprocess (15s timeout, output caps, always confirmed) — the agent can run code, read the traceback, and fix itself |
+| `sysinfo` | `sysinfo` | Reads the local machine's real hardware/OS state (PowerShell CIM on Windows, lscpu/df/uptime on Linux, sysctl on macOS) so the agent never has to guess your specs |
 
 Plus: multi-turn conversation memory, a `--skill` flag to load a subset,
 honest self-identification, a printed trace of every tool call, and a

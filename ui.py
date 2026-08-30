@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import threading
 import time
@@ -138,23 +139,109 @@ class Spinner:
 
 # ---------------- widgets ----------------
 
-def banner(model: str, tools: dict, skills: list[str]) -> None:
-    """Startup box: who, what model, which skills, which commands."""
-    tool_names = ", ".join(sorted(tools))
-    if len(tool_names) > 58:
-        tool_names = tool_names[:55] + "..."
-    lines = [
-        f"ouroAI  ·  from-scratch agent",
-        f"model    {model} (groq)",
-        f"skills   {', '.join(skills)}",
-        f"tools    {tool_names}",
-        f"commands reset · quit",
+# ---------------- neofetch-style banner ----------------
+#
+# Two-column layout: hand-drawn ouroAI mark on the left, machine + agent
+# info on the right. A real color palette block at the bottom. Falls back
+# gracefully to a single-column stacked layout on narrow terminals.
+
+OURO_LOGO = [
+    r"          ▄▄          ",
+    r"        ▄████▄        ",
+    r"      ▄██████▀        ",
+    r"    ▄██████▀     ◉ ouroAI",
+    r"  ▄██████▀           from-scratch agent",
+    r"▄██████▀                ",
+    r"  ▀███▀                ",
+    r"    ▀                 ",
+    r"                      ",
+    r"  one brain, ten hands ",
+]
+
+OURO_PALETTE = [
+    ("30", "40", "90", "100", "130", "140", "180", "190"),
+    ("31", "41", "91", "101", "131", "141", "181", "191"),
+    ("32", "42", "92", "102", "132", "142", "182", "192"),
+    ("33", "43", "93", "103", "133", "143", "183", "193"),
+    ("34", "44", "94", "104", "134", "144", "184", "194"),
+    ("35", "45", "95", "105", "135", "145", "185", "195"),
+    ("36", "46", "96", "106", "136", "146", "186", "196"),
+    ("37", "47", "97", "107", "137", "147", "187", "197"),
+]
+
+
+def _swatch(ansi_code: str) -> str:
+    """A small colored block for a single ANSI background code."""
+    if not COLOR:
+        return "█"  # plain run: just show shape, no color
+    return f"\x1b[{ansi_code}m  \x1b[0m"
+
+
+def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
+    """Right-hand column: model, host, runtime, skill summary."""
+    import os
+    import platform
+    try:
+        host = platform.node()[:24]
+    except Exception:
+        host = "?"
+    user = os.environ.get("USERNAME") or os.environ.get("USER") or "?"
+    py = platform.python_version()
+    tool_names = sorted(tools)
+    tools_line = ", ".join(tool_names)
+    if len(tools_line) > 36:
+        tools_line = ", ".join(t[:6] for t in tool_names)[:36] + "..."
+    return [
+        paint(f"{user}", BOLD) + paint("@", DIM) + paint(f"{host}", BOLD),
+        "",
+        paint("─" * 38, DIM),
+        paint("  ouroAI", BOLD),
+        paint(f"  model   {model}", DIM),
+        paint(f"  python  {py}", DIM),
+        paint(f"  cwd     {os.getcwd()[:30]}", DIM),
+        paint("─" * 38, DIM),
+        paint(f"  skills  {', '.join(skills)[:32]}", DIM),
+        paint(f"  tools   {tools_line}", DIM),
+        paint("  commands reset · quit", DIM),
     ]
-    width = max(len(ln) for ln in lines) + 4
-    print(paint("╭" + "─" * width + "╮", DIM))
-    for ln in lines:
-        print(paint("│", DIM) + "  " + ln.ljust(width - 2) + paint("│", DIM))
-    print(paint("╰" + "─" * width + "╯", DIM))
+
+
+def _palette_block() -> list[str]:
+    """A 2-row color preview so the user sees what their terminal is doing."""
+    rows = []
+    for row in OURO_PALETTE[:4]:
+        rows.append("  " + "".join(_swatch(c) for c in row))
+    return rows
+
+
+def banner(model: str, tools: dict, skills: list[str]) -> None:
+    """Two-column neofetch-style header. Falls back to a single column on
+    narrow terminals or piped output (where alignment is impossible)."""
+    info = _info_block(model, tools, skills)
+    width = shutil.get_terminal_size((100, 20)).columns  # default to 100
+    if not COLOR or width < 70:
+        # Single-column fallback: logo on top, info below.
+        for line in OURO_LOGO:
+            print(line)
+        print()
+        for line in info:
+            print(line)
+        print()
+        for line in _palette_block():
+            print(line)
+        print()
+        return
+
+    # Two-column layout: print the logo and info side by side.
+    pad = 4
+    rows = max(len(OURO_LOGO), len(info))
+    for i in range(rows):
+        left = OURO_LOGO[i] if i < len(OURO_LOGO) else " " * 22
+        right = info[i] if i < len(info) else ""
+        print(f"{paint(left, CYAN)}{' ' * pad}{right}")
+    print()
+    for line in _palette_block():
+        print(line)
     print()
 
 
