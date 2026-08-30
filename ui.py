@@ -141,47 +141,29 @@ class Spinner:
 
 # ---------------- neofetch-style banner ----------------
 #
-# Two-column layout: hand-drawn ouroAI mark on the left, machine + agent
-# info on the right. A real color palette block at the bottom. Falls back
-# gracefully to a single-column stacked layout on narrow terminals.
+# Two-column layout: a geometric ouroboros ring on the left (the emblem —
+# deliberately NOT letter-art; hand-drawn ASCII fonts render ambiguous
+# glyphs, and an earlier version's "u" read as "y", spelling "oyer").
+# The name below the ring is plain text, which cannot be misread.
 #
-# A previous version used `▄`-block Unicode art that rendered as huge blobs
-# in some terminals and overran the right column. Lesson: ASCII-only art is
-# the only art that renders identically everywhere. The mark below is plain
-# `/-\|` characters — it will look the same on any terminal you run it on.
+# The color-palette block from earlier versions was removed: it was 8 rows
+# of decoration that the user didn't ask for and didn't miss.
 
 OURO_LOGO = [
-    r"    ____                    ",
-    r"   / __ \                   ",
-    r"  | |  | |_   _  ___ _ __   ",
-    r"  | |  | | | | |/ _ \ '__|  ",
-    r"  | |__| | |_| |  __/ |     ",
-    r"   \____/ \__, |\___|_|     ",
-    r"           __/ |            ",
-    r"          |___/             ",
-    r"                            ",
-    r"  one brain, ten hands      ",
-]
-
-OURO_PALETTE = [
-    ("30", "40", "90", "100", "130", "140", "180", "190"),
-    ("31", "41", "91", "101", "131", "141", "181", "191"),
-    ("32", "42", "92", "102", "132", "142", "182", "192"),
-    ("33", "43", "93", "103", "133", "143", "183", "193"),
-    ("34", "44", "94", "104", "134", "144", "184", "194"),
-    ("35", "45", "95", "105", "135", "145", "185", "195"),
-    ("36", "46", "96", "106", "136", "146", "186", "196"),
-    ("37", "47", "97", "107", "137", "147", "187", "197"),
+    r"      _.--------._    ",
+    r"    .'            '.  ",
+    r"   /                \ ",
+    r"  |                  |",
+    r"   \                / ",
+    r"    '._          _.'  ",
+    r"       '--------'     ",
+    r"                     ",
+    r"     o  u  r  o      ",
+    r"                     ",
+    r" one brain, ten hands",
 ]
 
 LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
-
-
-def _swatch(ansi_code: str) -> str:
-    """A small colored block for a single ANSI background code."""
-    if not COLOR:
-        return " " * 2  # plain run: 2 spaces, no shape
-    return f"\x1b[{ansi_code}m  \x1b[0m"
 
 
 def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
@@ -222,11 +204,6 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     ]
 
 
-def _palette_block() -> list[str]:
-    """A full 16-color preview (8 ANSI x 2 rows: normal + bright)."""
-    return ["  " + "".join(_swatch(c) for c in row) for row in OURO_PALETTE]
-
-
 def banner(model: str, tools: dict, skills: list[str]) -> None:
     """Two-column neofetch-style header. Falls back to a single column on
     narrow terminals or piped output (where alignment is impossible)."""
@@ -234,14 +211,11 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
     width = shutil.get_terminal_size((100, 20)).columns
 
     if not COLOR or width < (LOGO_WIDTH + 4 + 42):
-        # Single-column fallback: logo on top, info below, palette last.
+        # Single-column fallback: logo on top, info below.
         for line in OURO_LOGO:
             print(line)
         print()
         for line in info:
-            print(line)
-        print()
-        for line in _palette_block():
             print(line)
         print()
         return
@@ -259,9 +233,6 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
             left = " " * LOGO_WIDTH
         right = info[i] if i < len(info) else ""
         print(f"{paint(left, CYAN)}{' ' * pad}{right}")
-    print()
-    for line in _palette_block():
-        print(line)
     print()
 
 
@@ -288,7 +259,7 @@ def glitch_line(step: int) -> None:
 
 
 def answer(text: str) -> None:
-    print()
+    # One blank line AFTER the answer (not before and after) — tighter turns.
     print(paint("ouro", MAGENTA, BOLD) + " " + paint("❯", DIM))
     render(text)
     print()
@@ -384,7 +355,7 @@ def _md_to_ansi(text: str) -> str:
             elif tag == "em" or tag == "i":
                 emit("\x1b[3m" if COLOR else "")
             elif tag in ("p",):
-                emit("\n")
+                emit("")  # paragraphs: single newline (emitted at close) — tighter
             elif tag in ("ul", "ol"):
                 emit("\n")
             elif tag == "li":
