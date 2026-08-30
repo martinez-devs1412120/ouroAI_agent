@@ -15,6 +15,7 @@ it do (everything else)?*
 | `web_search` | `web_search` | Free DuckDuckGo search with retries — current events, versions, prices |
 | `studyrag` | `query_studyrag` | Search over the user's own course notes (their separate StudyRag project) |
 | `safe_fs` | `list_folder`, `read_file`, `write_file`, `mkdir`, `move`, `delete` | Sandboxed file operations behind 4 independent safety layers |
+| `run_python` | `run_python` | Executes Python in a capped subprocess (15s timeout, output caps, always confirmed) — the agent can run code, read the traceback, and fix itself |
 
 Plus: multi-turn conversation memory, a `--skill` flag to load a subset,
 honest self-identification, and a printed trace of every tool call.
@@ -115,8 +116,6 @@ real agent:
 
 ## Roadmap
 
-- `run_python` tool — execute code in a capped subprocess and feed tracebacks
-  back to the model (the real coding-agent upgrade)
 - Streaming output + a small GUI (confirmations become buttons — a redesign
   of layer 3, not a wrapper)
 - Automatic history trimming for long sessions
