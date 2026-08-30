@@ -127,3 +127,11 @@ real agent:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Splash art credit
+
+The ASCII landscape shown at the top of the banner is a coverage-ramp
+rendering of an artwork by **@littlebitspace** (originally created
+2021-06). Source: `assets/pixil2.jpg` (kept in the repo for attribution).
+The conversion script lives at `tools/make_splash.py` and is regenerable
+if you want to swap the art for your own.

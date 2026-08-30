@@ -141,13 +141,23 @@ class Spinner:
 
 # ---------------- neofetch-style banner ----------------
 #
-# Two-column layout: a geometric ouroboros ring on the left (the emblem —
-# deliberately NOT letter-art; hand-drawn ASCII fonts render ambiguous
-# glyphs, and an earlier version's "u" read as "y", spelling "oyer").
-# The name below the ring is plain text, which cannot be misread.
+# Layout: a SPLASH art (full-width, generated from assets/pixil2.jpg via
+# tools/make_splash.py) sits on top. Below it, the existing two-column
+# ouroboros-ring + machine-info block.
 #
-# The color-palette block from earlier versions was removed: it was 8 rows
-# of decoration that the user didn't ask for and didn't miss.
+# Why a full-width splash instead of squeezing the art into the 22-char
+# left column: pixel art in a narrow column becomes gray mush. The
+# landscape wants 80+ columns to read; giving it the full width is the
+# only honest way to show it.
+
+from pathlib import Path as _Path
+
+_SPLASH_PATH = _Path(__file__).parent / "assets" / "splash.txt"
+if _SPLASH_PATH.exists():
+    SPLASH = _SPLASH_PATH.read_text(encoding="utf-8").rstrip().splitlines()
+else:
+    SPLASH = []  # graceful fallback if the file is missing
+
 
 OURO_LOGO = [
     r"      _.--------._    ",
@@ -207,11 +217,20 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
 def banner(model: str, tools: dict, skills: list[str]) -> None:
     """Two-column neofetch-style header. Falls back to a single column on
     narrow terminals or piped output (where alignment is impossible)."""
+    # The splash is the wide top of the banner. Truncate to terminal width so
+    # narrow terminals don't get a wrapped, broken image.
+    if SPLASH:
+        term_w = shutil.get_terminal_size((100, 20)).columns
+        for line in SPLASH:
+            print(line[:term_w])
+        print()
+
     info = _info_block(model, tools, skills)
     width = shutil.get_terminal_size((100, 20)).columns
 
     if not COLOR or width < (LOGO_WIDTH + 4 + 42):
-        # Single-column fallback: logo on top, info below.
+        # Single-column fallback: the splash was already printed above;
+        # just stack logo + info.
         for line in OURO_LOGO:
             print(line)
         print()
