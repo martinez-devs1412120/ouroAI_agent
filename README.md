@@ -19,8 +19,9 @@ it do (everything else)?*
 
 Plus: multi-turn conversation memory, a `--skill` flag to load a subset,
 honest self-identification, a printed trace of every tool call, and a
-hand-rolled ANSI terminal UI (banner, spinner, colored prompts) that
-auto-disables when output is piped or `NO_COLOR` is set.
+hand-rolled ANSI terminal UI (banner, spinner, colored prompts, **markdown
+answers with syntax-highlighted code blocks**) that auto-disables when
+output is piped or `NO_COLOR` is set.
 
 ## How it works (the whole trick)
 

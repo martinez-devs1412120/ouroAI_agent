@@ -1,10 +1,10 @@
-"""ui.py — everything the user SEES. Zero dependencies.
+"""ui.py — everything the user SEES.
 
 Design rule this file exists to teach: agent.py decides, ui.py displays.
 The loop never calls print() directly anymore; it calls ui.something().
 When the GUI comes later, this is the one file that gets replaced.
 
-Three ideas live here:
+Four ideas live here:
 
 1. ANSI colors. Terminals render color when you print escape sequences —
    "\\x1b[36m" literally means "switch to cyan from here on". The catch:
@@ -22,6 +22,13 @@ Three ideas live here:
 3. The spinner only ever wraps the MODEL call, never a tool. Two writers
    to one terminal line (a spinner thread + a confirm prompt waiting on
    input) garble each other. Tools may prompt; the API call never does.
+
+4. The model's answers are MARKDOWN, not plain text. The system prompt
+   invites the model to format with `code blocks`, lists, etc.; we render
+   them properly. Pygments handles syntax highlighting for any language
+   the model names after the ``` fence (python, js, sql, bash, ...). For
+   anything Pygments doesn't recognize, we fall back to plain rendering
+   — the goal is to never break an answer because we couldn't color it.
 """
 
 from __future__ import annotations
@@ -175,8 +182,169 @@ def glitch_line(step: int) -> None:
 
 def answer(text: str) -> None:
     print()
-    print(paint("ouro", MAGENTA, BOLD) + " " + paint("❯", DIM) + " " + text)
+    print(paint("ouro", MAGENTA, BOLD) + " " + paint("❯", DIM))
+    render(text)
     print()
+
+
+# ---------------- markdown rendering (with code highlighting) ----------------
+#
+# Why this exists: a real code block in a terminal is a SYNTAX HIGHLIGHTED
+# block, not a box of dashes. Boxes are visual noise and they break on long
+# lines and they make copy-paste worse. Pygments gives every token a color
+# (keywords one color, strings another, comments a third) and we wrap the
+# whole block in a single dim border so it still FEELS distinct.
+
+import re as _re
+import html as _html
+from markdown import markdown as _md
+from pygments import highlight as _pyg_highlight
+from pygments.formatters import Terminal256Formatter, RawTokenFormatter
+from pygments.lexers import get_lexer_by_name as _get_lexer, guess_lexer as _guess_lexer
+from pygments.util import ClassNotFound as _ClassNotFound
+
+# A code block from the model looks like:
+#   ```python
+#   def foo(): ...
+#   ```
+# We match the opening fence, optionally with a language tag, capture both
+# the language and the body, and pass the body to Pygments. Everything else
+# (headings, lists, paragraphs) goes through the markdown library.
+_FENCE = _re.compile(
+    r"```([A-Za-z0-9_+\-#.]*)\s*\n(.*?)\n```",
+    flags=_re.DOTALL,
+)
+
+
+def _highlight_code(code: str, lang: str) -> str:
+    """Colorize `code` as `lang` (e.g. 'python', 'js', 'bash'). If Pygments
+    can't find a lexer for the language, fall back to plain — never crash."""
+    try:
+        lexer = _get_lexer(lang) if lang else _guess_lexer(code)
+    except _ClassNotFound:
+        lexer = _guess_lexer(code) if code.strip() else None
+    if lexer is None:
+        return code
+    # Two formatters, deliberately:
+    #   - COLOR on  -> 256-color terminal theme, real syntax colors.
+    #   - COLOR off -> RawTokenFormatter emits NO ANSI sequences at all,
+    #                 so piped runs / log files see clean plain code.
+    # ('bw' is a monochrome theme that still emits bold-on/off codes,
+    #  which would leak into pipes and break our NO_COLOR contract.)
+    formatter = (Terminal256Formatter(style="monokai") if COLOR
+                 else RawTokenFormatter())
+    return _pyg_highlight(code, lexer, formatter).rstrip("\n")
+
+
+def _md_to_ansi(text: str) -> str:
+    """Convert a markdown string to ANSI-styled terminal output. The markdown
+    library returns HTML; we walk the HTML ourselves because there's no good
+    library for "HTML → ANSI" in our dependency set, and a minimal walker is
+    easier to control than a heavyweight one."""
+    # 1) Run the markdown library: it gives us HTML with <h1>, <p>, <ul>, <pre>, etc.
+    html = _md(text, extensions=["fenced_code", "tables"])
+    # 2) Pull the <pre><code> blocks OUT before doing any other transformation,
+    #    so the markdown→HTML→ANSI walker doesn't try to escape the highlighted
+    #    ANSI sequences that Pygments will inject.
+    pre_blocks: list[tuple[str, str, str]] = []  # (placeholder, lang, highlighted)
+    def _stash(m):
+        lang, code = m.group(1) or "", _html.unescape(m.group(2))
+        highlighted = _highlight_code(code, lang)
+        placeholder = f"\x00PRE{len(pre_blocks)}\x00"
+        pre_blocks.append((placeholder, lang, highlighted))
+        return placeholder
+    html_no_pre = _re.sub(r'<pre><code(?:\s+class="language-([^"]+)")?>(.*?)</code></pre>',
+                          _stash, html, flags=_re.DOTALL)
+    # 3) Walk the remaining HTML, mapping tags to ANSI styles.
+    out: list[str] = []
+    i = 0
+    n = len(html_no_pre)
+    def emit(s): out.append(s)
+    while i < n:
+        ch = html_no_pre[i]
+        if ch == "<":
+            j = html_no_pre.find(">", i)
+            if j == -1:
+                emit(html_no_pre[i:]); break
+            tag = html_no_pre[i + 1:j].strip().lower()
+            # Handle inline styles first — these are the case-by-case transformations.
+            if tag.startswith("h1") or tag.startswith("h2") or tag.startswith("h3"):
+                emit("\n" + paint("", BOLD) + "\n")
+            elif tag == "hr":
+                emit("\n" + paint("─" * 40, DIM) + "\n")
+            elif tag == "strong" or tag == "b":
+                emit(BOLD if COLOR else "")
+            elif tag == "em" or tag == "i":
+                emit("\x1b[3m" if COLOR else "")
+            elif tag in ("p",):
+                emit("\n")
+            elif tag in ("ul", "ol"):
+                emit("\n")
+            elif tag == "li":
+                emit(paint("•", CYAN) + " " if COLOR else "- ")
+            elif tag == "br":
+                emit("\n")
+            elif tag == "code":
+                # Inline code (not in a <pre>). Wrap in dim inverse-style.
+                emit(paint("", DIM) + ("\x1b[7m" if COLOR else ""))
+            elif tag.startswith("tr"):
+                emit("\n")
+            elif tag in ("th", "td"):
+                emit("  ")
+            # closing tags
+            elif tag.startswith("/"):
+                name = tag[1:]
+                if name in ("strong", "b"): emit(RESET if COLOR else "")
+                elif name in ("em", "i"): emit("\x1b[23m" if COLOR else "")
+                elif name in ("p", "ul", "ol", "tr", "h1", "h2", "h3"): emit("\n")
+                elif name == "li": emit("\n")
+                elif name == "code": emit(RESET if COLOR else "")
+            i = j + 1
+            continue
+        elif ch == "&":
+            j = html_no_pre.find(";", i)
+            if j != -1 and j - i <= 6:
+                emit(_html.unescape(html_no_pre[i:j + 1]))
+                i = j + 1
+                continue
+        elif ch == "\x00":
+            # A pre block placeholder — look up and emit the highlighted ANSI.
+            end = html_no_pre.find("\x00", i + 1)
+            placeholder = html_no_pre[i:end + 1]
+            match = next((p for p in pre_blocks if p[0] == placeholder), None)
+            if match:
+                _, lang, highlighted = match
+                # Wrap with a thin dim border so the block still feels boxed,
+                # but the contents are real syntax-highlighted code, not dashes.
+                border = paint("─" * 60, DIM)
+                emit("\n" + border + "\n")
+                if lang:
+                    emit(paint(f"  {lang}", DIM, BOLD) + "\n")
+                for line in highlighted.splitlines():
+                    emit(paint("  │ ", DIM) + line + "\n")
+                emit(border + "\n")
+            i = end + 1
+            continue
+        else:
+            emit(ch)
+        i += 1
+    return "".join(out)
+
+
+def render(text: str) -> None:
+    """Print `text` (assumed to be markdown) styled for the terminal.
+    Falls back to plain print on any error so a rendering bug never breaks
+    an answer — the user should always see the words."""
+    if not text:
+        return
+    try:
+        rendered = _md_to_ansi(text)
+        sys.stdout.write(rendered)
+        if not rendered.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+    except Exception:
+        print(text)
 
 
 def notice(text: str) -> None:
