@@ -45,7 +45,7 @@ The model decides; the loop does. That's an agent.
 Requires Python 3.10+ and a free API key from [console.groq.com/keys](https://console.groq.com/keys).
 
 ```powershell
-git clone https://github.com/<you>/ouroAI_agent.git
+git clone https://github.com/martinez-devs1412120/ouroAI_agent.git
 cd ouroAI_agent
 python -m venv .venv
 .venv\Scripts\activate            # Windows PowerShell (Git Bash: source .venv/Scripts/activate)
@@ -61,8 +61,8 @@ first use) and ask for a typed `y` before anything destructive.
 
 The `studyrag` skill is optional — it looks for a StudyRag store at the path
 configured in `skills/studyrag/code.py` and returns a helpful message if none
-exists. Build your own store with [StudyRag](https://github.com/<you>/studpart)
-or edit that path to point at any TF-IDF store.
+exists. Point it at any TF-IDF store of your own, or delete the skill folder
+to run without it.
 
 ## Adding a skill (about 60 seconds)
 
