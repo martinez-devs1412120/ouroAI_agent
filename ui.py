@@ -159,18 +159,19 @@ else:
     SPLASH = []  # graceful fallback if the file is missing
 
 
-OURO_LOGO = [
-    r"      _.--------._    ",
-    r"    .'            '.  ",
-    r"   /                \ ",
-    r"  |                  |",
-    r"   \                / ",
-    r"    '._          _.'  ",
-    r"       '--------'     ",
-    r"                     ",
-    r"     o  u  r  o      ",
-    r"                     ",
-    r" one brain, ten hands",
+# Emblem: a coverage-ramp rendering of the Ouroboros art (assets/ouroboros.png).
+# Generated once by tools/make_art.py — to swap the art, replace the PNG and
+# run the converter. The shape (a snake biting its tail) is the etymological
+# meaning of "ouroboros", which is the namesake of the project.
+_EMBLEM_PATH = _Path(__file__).parent / "assets" / "emblem.txt"
+_EMBLEM = (_EMBLEM_PATH.read_text(encoding="utf-8").rstrip().splitlines()
+           if _EMBLEM_PATH.exists() else [])
+
+OURO_LOGO = _EMBLEM + [
+    "",
+    "     o  u  r  o",
+    "",
+    " one brain, ten hands",
 ]
 
 LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
