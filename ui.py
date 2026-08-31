@@ -248,15 +248,21 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
         return
 
     # Two-column layout. Pad the LEFT column to LOGO_WIDTH on every row so
-    # the right column always starts at the same x position.
+    # the right column always starts at the same x position. The right
+    # column is offset DOWN by a few blank rows so its first text line
+    # lines up with the snake's center-of-mass (around row 5 of 13), not
+    # the snake's top edge. Without the offset the text 'points to' the
+    # head and drifts past the body.
     pad = 10
-    rows = max(len(OURO_LOGO), len(info))
+    top_pad = 3
+    rows = max(len(OURO_LOGO), len(info) + top_pad)
     for i in range(rows):
         if i < len(OURO_LOGO):
             left = _paint_emblem_row(OURO_LOGO[i])
         else:
             left = " " * LOGO_WIDTH
-        right = info[i] if i < len(info) else ""
+        info_idx = i - top_pad
+        right = info[info_idx] if 0 <= info_idx < len(info) else ""
         print(f"{left}{' ' * pad}{right}")
     print()
 
