@@ -158,18 +158,16 @@ _EMBLEM_PATH = _Path(__file__).parent / "assets" / "emblem.txt"
 _EMBLEM = (_EMBLEM_PATH.read_text(encoding="utf-8").rstrip().splitlines()
            if _EMBLEM_PATH.exists() else [])
 
-OURO_LOGO = _EMBLEM + [
-    "",
-    "     o  u  r  o",
-]
+OURO_LOGO = _EMBLEM
 
 LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
 
 
 def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     """Right-hand column. White for the values (the things you want to see),
-    dim gray for the labels (the things that frame them). One bright
-    header line so the user knows what they're looking at."""
+    dim gray for the labels (the things that frame them). Trimmed to the
+    essentials so it pairs with the bigger emblem without overflowing
+    a normal terminal: user/host, model, and the key command."""
     import os
     import platform
     try:
@@ -177,35 +175,17 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     except Exception:
         host = "?"
     user = os.environ.get("USERNAME") or os.environ.get("USER") or "?"
-    py = platform.python_version()
-    cwd = os.getcwd()
-    if len(cwd) > 30:
-        cwd = "..." + cwd[-27:]
-    tool_names = sorted(tools)
-    tools_line = ", ".join(t[:7] for t in tool_names)
-    if len(tools_line) > 40:
-        tools_line = tools_line[:40] + "..."
-    skills_line = ", ".join(skills)
-    if len(skills_line) > 40:
-        skills_line = skills_line[:40] + "..."
 
-    # The user/host line and the header are the only BOLD lines; the rest
-    # use plain text for values, dim for labels. The contrast carries the
-    # hierarchy without needing any other decoration.
-    userhost = paint(user, BOLD) + paint("@", DIM) + paint(host, BOLD)
     return [
-        userhost,
+        paint(user, BOLD) + paint("@", DIM) + paint(host, BOLD),
+        paint("─" * 36, DIM),
+        paint("ouroAI", BOLD) + paint(" · ", DIM) + paint(model, BOLD),
         "",
-        paint("─" * 42, DIM),
-        paint("ouroAI", BOLD) + paint("  from-scratch agent", DIM),
-        paint("model     ", DIM) + paint(model, BOLD),
-        paint("python    ", DIM) + paint(py, BOLD),
-        paint("cwd       ", DIM) + paint(cwd, BOLD),
-        paint("skills    ", DIM) + paint(skills_line, BOLD),
-        paint("tools     ", DIM) + paint(tools_line, BOLD),
+        paint("from-scratch agent", DIM),
+        paint(str(len(tools)) + " tools · " + str(len(skills)) + " skills", DIM),
         "",
         paint("reset", BOLD) + paint(" · ", DIM) + paint("quit", BOLD) + paint(" · ", DIM) +
-        paint("press Ctrl+C to abort", DIM),
+        paint("Ctrl+C to abort", DIM),
     ]
 
 
@@ -215,9 +195,8 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
     info = _info_block(model, tools, skills)
     width = shutil.get_terminal_size((100, 20)).columns
 
-    if not COLOR or width < (LOGO_WIDTH + 12 + 42):
-        # Single-column fallback: the splash was already printed above;
-        # just stack logo + info.
+    if not COLOR or width < (LOGO_WIDTH + 10 + 36):
+        # Single-column fallback: stack logo + info.
         for line in OURO_LOGO:
             print(line)
         print()
@@ -226,11 +205,9 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
         print()
         return
 
-    # Two-column layout. KEY FIX: pad the LEFT column to LOGO_WIDTH on every
-    # row (not just the ones shorter than that), so the right column always
-    # starts at the same x position. Without this, mixed-width logo lines
-    # cause the right column to drift left and right per row.
-    pad = 12  # bigger gap — the two columns read as clearly separate zones
+    # Two-column layout. Pad the LEFT column to LOGO_WIDTH on every row so
+    # the right column always starts at the same x position.
+    pad = 10
     rows = max(len(OURO_LOGO), len(info))
     for i in range(rows):
         if i < len(OURO_LOGO):
