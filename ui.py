@@ -71,6 +71,13 @@ COLOR = _colors_enabled()
 # Every style is a full escape sequence; paint() just concatenates them.
 RESET, DIM, BOLD = "\x1b[0m", "\x1b[2m", "\x1b[1m"
 CYAN, YELLOW, MAGENTA, GREEN, RED = "\x1b[36m", "\x1b[33m", "\x1b[35m", "\x1b[32m", "\x1b[31m"
+# Three-tone gray ramp for the ouroboros emblem. 256-color codes:
+# 235 = dark gray (background, faint structure)
+# 244 = mid gray (the body of the snake)
+# 255 = near-white (highlights: eye, head detail)
+EMBLEM_DARK = "\x1b[38;5;235m"
+EMBLEM_MID  = "\x1b[38;5;244m"
+EMBLEM_HIGH = "\x1b[38;5;255m"
 
 
 def paint(text: str, *styles: str) -> str:
@@ -163,11 +170,33 @@ OURO_LOGO = _EMBLEM
 LOGO_WIDTH = max(len(line) for line in OURO_LOGO)  # pad every left row to this
 
 
+def _paint_emblem_row(row: str) -> str:
+    """Color the ouroboros row in a 3-tone gray ramp: faintest glyphs in
+    dark gray, body in mid gray, sharpest details (the eye) in near-white.
+    Plain (no-color) runs just return the row unchanged."""
+    if not COLOR:
+        return row.ljust(LOGO_WIDTH)
+    out = []
+    for ch in row:
+        if ch == " ":
+            out.append(" ")
+        elif ch in "+=":
+            out.append(EMBLEM_DARK + ch)            # faintest: body shading
+        elif ch in ".*":
+            out.append(EMBLEM_MID + ch)             # body
+        elif ch in "#":
+            out.append(EMBLEM_MID + ch)             # body
+        elif ch in "@:":
+            out.append(EMBLEM_HIGH + ch)            # bright: head, eye
+        else:
+            out.append(EMBLEM_MID + ch)
+    return "".join(out) + RESET + " " * (LOGO_WIDTH - len(row))
+
+
 def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     """Right-hand column. White for the values (the things you want to see),
-    dim gray for the labels (the things that frame them). Trimmed to the
-    essentials so it pairs with the bigger emblem without overflowing
-    a normal terminal: user/host, model, and the key command."""
+    dim gray for the labels (the things that frame them). Full detail:
+    user/host, model, python, cwd, skills, tools, commands."""
     import os
     import platform
     try:
@@ -175,15 +204,28 @@ def _info_block(model: str, tools: dict, skills: list[str]) -> list[str]:
     except Exception:
         host = "?"
     user = os.environ.get("USERNAME") or os.environ.get("USER") or "?"
+    py = platform.python_version()
+    cwd = os.getcwd()
+    if len(cwd) > 30:
+        cwd = "..." + cwd[-27:]
+    tool_names = sorted(tools)
+    tools_line = ", ".join(t[:7] for t in tool_names)
+    if len(tools_line) > 38:
+        tools_line = tools_line[:38] + "..."
+    skills_line = ", ".join(skills)
+    if len(skills_line) > 38:
+        skills_line = skills_line[:38] + "..."
 
     return [
         paint(user, BOLD) + paint("@", DIM) + paint(host, BOLD),
         paint("─" * 36, DIM),
         paint("ouroAI", BOLD) + paint(" · ", DIM) + paint(model, BOLD),
+        paint("python    ", DIM) + paint(py, BOLD),
+        paint("cwd       ", DIM) + paint(cwd, BOLD),
+        paint("skills    ", DIM) + paint(skills_line, BOLD),
+        paint("tools     ", DIM) + paint(tools_line, BOLD),
         "",
         paint("from-scratch agent", DIM),
-        paint(str(len(tools)) + " tools · " + str(len(skills)) + " skills", DIM),
-        "",
         paint("reset", BOLD) + paint(" · ", DIM) + paint("quit", BOLD) + paint(" · ", DIM) +
         paint("Ctrl+C to abort", DIM),
     ]
@@ -211,11 +253,11 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
     rows = max(len(OURO_LOGO), len(info))
     for i in range(rows):
         if i < len(OURO_LOGO):
-            left = OURO_LOGO[i].ljust(LOGO_WIDTH)
+            left = _paint_emblem_row(OURO_LOGO[i])
         else:
             left = " " * LOGO_WIDTH
         right = info[i] if i < len(info) else ""
-        print(f"{paint(left, CYAN)}{' ' * pad}{right}")
+        print(f"{left}{' ' * pad}{right}")
     print()
 
 
