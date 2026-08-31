@@ -215,7 +215,7 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
     info = _info_block(model, tools, skills)
     width = shutil.get_terminal_size((100, 20)).columns
 
-    if not COLOR or width < (LOGO_WIDTH + 4 + 42):
+    if not COLOR or width < (LOGO_WIDTH + 12 + 42):
         # Single-column fallback: the splash was already printed above;
         # just stack logo + info.
         for line in OURO_LOGO:
@@ -230,7 +230,7 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
     # row (not just the ones shorter than that), so the right column always
     # starts at the same x position. Without this, mixed-width logo lines
     # cause the right column to drift left and right per row.
-    pad = 4
+    pad = 12  # bigger gap — the two columns read as clearly separate zones
     rows = max(len(OURO_LOGO), len(info))
     for i in range(rows):
         if i < len(OURO_LOGO):
