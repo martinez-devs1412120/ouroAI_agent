@@ -45,6 +45,13 @@ You ──▶ agent.py loop ──▶ Groq (gpt-oss-120b)
 
 The model decides; the loop does. That's an agent.
 
+## Screenshot
+
+![banner](docs/banner.png)
+
+The startup banner: ouroboros emblem on the left, machine + agent info
+on the right. Three-tone gray ramp, terminal-native.
+
 ## Quickstart
 
 Requires Python 3.10+ and a free API key from [console.groq.com/keys](https://console.groq.com/keys).
@@ -127,6 +134,17 @@ real agent:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Tests
+
+```powershell
+.venv\Scripts\python.exe -m unittest discover tests -v
+```
+
+39 tests, no extra dependencies. Covers the calculator's AST safety
+guarantee, safe_fs path confinement (Layer 1), the skills loader
+discovery contract, and the prompt-injection defense (Piece 22).
+Runs in under 100ms.
 
 ## Splash art credit
 
