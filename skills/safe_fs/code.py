@@ -17,6 +17,7 @@ DESTRUCTIVE = {"write_file", "move", "delete", "mkdir"}
 
 def _resolve(path_str: str) -> Path:
     raw = Path(path_str)
+    # First resolve (collapses '..' segments) — primary confinement check.
     absolute = (raw if raw.is_absolute() else (PLAYGROUND_ROOT / raw)).resolve()
     try:
         absolute.relative_to(PLAYGROUND_ROOT.resolve())
@@ -24,6 +25,20 @@ def _resolve(path_str: str) -> Path:
         raise PermissionError(
             f"path '{path_str}' escapes the playground ({PLAYGROUND_ROOT}). "
             f"Refused. (Layer 1: confinement)"
+        )
+    # Second check: follow symlinks with realpath and re-verify. A symlink
+    # INSIDE the playground pointing to OUTSIDE (e.g. AgentPlayground\secret
+    # -> C:\Windows\System32) would pass the first check and be readable.
+    # realpath() resolves every symlink in the chain; if the destination
+    # is outside the playground, the second check catches it.
+    import os
+    real = Path(os.path.realpath(absolute))
+    try:
+        real.relative_to(PLAYGROUND_ROOT.resolve())
+    except ValueError:
+        raise PermissionError(
+            f"path '{path_str}' is a symlink to '{real}' which is outside "
+            f"the playground. Refused. (Layer 1b: symlink escape)"
         )
     return absolute
 
