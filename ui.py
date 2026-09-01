@@ -129,7 +129,7 @@ class Spinner:
             frame = _FRAMES[i % len(_FRAMES)]
             elapsed = time.monotonic() - self._t0
             sys.stdout.write(
-                f"\r  {paint(frame, CYAN)} {paint(self.label, DIM)} {elapsed:5.1f}s "
+                f"\r  {paint(frame, EMBLEM_MID)} {paint(self.label, DIM)} {elapsed:5.1f}s "
             )
             sys.stdout.flush()
             i += 1
@@ -268,8 +268,9 @@ def banner(model: str, tools: dict, skills: list[str]) -> None:
 
 
 def you_prompt() -> str:
-    """The colored prompt string for input()."""
-    return paint("you", CYAN, BOLD) + " " + paint("❯", DIM) + " "
+    """The colored prompt string for input(). Near-white: in a monochrome
+    UI, the user's own voice is the brightest thing on screen."""
+    return paint("you", EMBLEM_HIGH, BOLD) + " " + paint("❯", DIM) + " "
 
 
 def tool_line(step: int, name: str, args: dict) -> None:
@@ -280,7 +281,7 @@ def tool_line(step: int, name: str, args: dict) -> None:
     print(
         paint(f"  step {step}", DIM)
         + paint(" → ", DIM)
-        + paint(name, CYAN, BOLD)
+        + paint(name, EMBLEM_MID, BOLD)
         + paint(f" {pretty}", DIM)
     )
 
@@ -291,7 +292,9 @@ def glitch_line(step: int) -> None:
 
 def answer(text: str) -> None:
     # One blank line AFTER the answer (not before and after) — tighter turns.
-    print(paint("ouro", MAGENTA, BOLD) + " " + paint("❯", DIM))
+    # 'ouro' speaks one step softer than 'you': hierarchy by brightness,
+    # since there is no color left to do the job.
+    print(paint("ouro", EMBLEM_MID, BOLD) + " " + paint("❯", DIM))
     render(text)
     print()
 
@@ -308,7 +311,7 @@ import re as _re
 import html as _html
 from markdown import markdown as _md
 from pygments import highlight as _pyg_highlight
-from pygments.formatters import Terminal256Formatter, RawTokenFormatter
+from pygments.formatters import Terminal256Formatter
 from pygments.lexers import get_lexer_by_name as _get_lexer, guess_lexer as _guess_lexer
 from pygments.util import ClassNotFound as _ClassNotFound
 
@@ -328,20 +331,20 @@ _FENCE = _re.compile(
 def _highlight_code(code: str, lang: str) -> str:
     """Colorize `code` as `lang` (e.g. 'python', 'js', 'bash'). If Pygments
     can't find a lexer for the language, fall back to plain — never crash."""
+    if not COLOR:
+        # Plain run: skip Pygments entirely. (An earlier version used
+        # RawTokenFormatter here — wrong tool: it writes a BYTES token
+        # stream, which explodes inside highlight()'s StringIO, and the
+        # except in render() silently downgraded every piped answer to raw
+        # markdown fences. Plain text needs no formatter at all.)
+        return code
     try:
         lexer = _get_lexer(lang) if lang else _guess_lexer(code)
     except _ClassNotFound:
         lexer = _guess_lexer(code) if code.strip() else None
     if lexer is None:
         return code
-    # Two formatters, deliberately:
-    #   - COLOR on  -> 256-color terminal theme, real syntax colors.
-    #   - COLOR off -> RawTokenFormatter emits NO ANSI sequences at all,
-    #                 so piped runs / log files see clean plain code.
-    # ('bw' is a monochrome theme that still emits bold-on/off codes,
-    #  which would leak into pipes and break our NO_COLOR contract.)
-    formatter = (Terminal256Formatter(style="monokai") if COLOR
-                 else RawTokenFormatter())
+    formatter = Terminal256Formatter(style="monokai")
     return _pyg_highlight(code, lexer, formatter).rstrip("\n")
 
 
@@ -386,7 +389,7 @@ def _md_to_ansi(text: str) -> str:
             elif tag == "em" or tag == "i":
                 emit("\x1b[3m" if COLOR else "")
             elif tag in ("p",):
-                emit("")  # paragraphs: single newline (emitted at close) — tighter
+                emit("\n")  # paragraphs separated by a blank line (close adds the other)
             elif tag in ("ul", "ol"):
                 emit("\n")
             elif tag == "li":
@@ -394,8 +397,8 @@ def _md_to_ansi(text: str) -> str:
             elif tag == "br":
                 emit("\n")
             elif tag == "code":
-                # Inline code (not in a <pre>). Wrap in dim inverse-style.
-                emit(paint("", DIM) + ("\x1b[7m" if COLOR else ""))
+                # Inline code (not in a <pre>): mid-gray inverse chip.
+                emit(EMBLEM_MID + ("\x1b[7m" if COLOR else ""))
             elif tag.startswith("tr"):
                 emit("\n")
             elif tag in ("th", "td"):
@@ -423,15 +426,17 @@ def _md_to_ansi(text: str) -> str:
             match = next((p for p in pre_blocks if p[0] == placeholder), None)
             if match:
                 _, lang, highlighted = match
-                # Wrap with a thin dim border so the block still feels boxed,
-                # but the contents are real syntax-highlighted code, not dashes.
+                # Framed like a card: border, language label, a breath of
+                # space, the code, another breath, border. The padding is
+                # what makes a code block read as a block instead of a clump.
                 border = paint("─" * 60, DIM)
                 emit("\n" + border + "\n")
                 if lang:
-                    emit(paint(f"  {lang}", DIM, BOLD) + "\n")
+                    emit(paint(f"  {lang}", EMBLEM_MID, BOLD) + "\n")
+                emit("\n")
                 for line in highlighted.splitlines():
-                    emit(paint("  │ ", DIM) + line + "\n")
-                emit(border + "\n")
+                    emit(paint("  │ ", EMBLEM_DARK) + line + "\n")
+                emit("\n" + border + "\n")
             i = end + 1
             continue
         else:
