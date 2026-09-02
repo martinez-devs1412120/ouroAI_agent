@@ -42,12 +42,58 @@ TOOL_RESULT_CLOSE = "\n<<<end_tool_result>>>\n"
 # Hard cap on user input — a paste of 50KB shouldn't burn the context.
 MAX_USER_INPUT = 8_000
 
+# Per-request history budget: system prompt + the newest complete turns.
+# Groq's free tier allows ~8,000 tokens/minute for this model, and every
+# request re-sends the ENTIRE conversation — so the history is the cost.
+# A long session that never trims will eventually 413 on every call.
+MAX_HISTORY_MESSAGES = 16
+
 # Patterns that, if found at the start of a string, suggest someone is
 # trying to impersonate a system or assistant message. We strip them.
 _INJECTION_PREFIXES = re.compile(
     r"^\s*(system|assistant|user)\s*:\s*",
     re.IGNORECASE | re.MULTILINE,
 )
+
+
+def _role_of(m) -> str:
+    """Message role whether m is a dict (user/tool/system) or a pydantic
+    model (assistant messages come back from the SDK as objects)."""
+    if isinstance(m, dict):
+        return m.get("role", "")
+    return getattr(m, "role", "")
+
+
+def _trim_history(messages: list, keep: int = MAX_HISTORY_MESSAGES) -> list:
+    """Keep the system prompt + the newest COMPLETE turns.
+
+    Cut points are user-message boundaries ONLY. An assistant message
+    carrying tool_calls must never be separated from the tool results
+    that follow it — Groq rejects that with a 400 (the Piece 3 lesson:
+    'an assistant message with tool_calls must be followed by tool
+    messages'). Trimming at a user boundary guarantees every remaining
+    turn is complete.
+
+    Mutates and returns `messages` — memory IS the list (Piece 7), so
+    trimming in place means the agent genuinely forgets, and `reset`
+    stays the only way to recover it."""
+    if len(messages) <= keep:
+        return messages
+    system, rest = messages[0], messages[1:]
+    allowed = keep - 1  # the system prompt occupies one slot
+    boundaries = [i for i in range(len(rest)) if _role_of(rest[i]) == "user"]
+    cut = 0
+    for i in boundaries:  # ascending; the first fit is the oldest cut that works
+        if len(rest) - i <= allowed:
+            cut = i
+            break
+    else:
+        # Even the newest turn alone overflows `keep` (huge tool results).
+        # Keep just the newest turn — the caller can trim harder if needed.
+        cut = boundaries[-1] if boundaries else 0
+    trimmed = [system] + rest[cut:]
+    messages[:] = trimmed
+    return trimmed
 
 
 def _sanitize_tool_result(name: str, raw: str) -> str:
@@ -111,6 +157,11 @@ def run_agent(question: str, messages: list) -> str:
     if len(question) > MAX_USER_INPUT:
         question = question[:MAX_USER_INPUT] + f"\n[...truncated; original {len(question)} chars]"
     messages.append({"role": "user", "content": question})
+    # Bound the request size before the first token is sent: every API
+    # call re-sends this whole list, and the free tier pays by the token.
+    messages[:] = _trim_history(messages)
+
+    trimmed_for_limits = False  # one aggressive-trim retry per question
 
     for step in range(1, MAX_STEPS + 1):
         try:
@@ -125,6 +176,24 @@ def run_agent(question: str, messages: list) -> str:
             if "tool_use_failed" in err or "tool call validation failed" in err:
                 glitch_line(step)
                 continue
+            if "rate_limit_exceeded" in err:
+                # Groq free tier: 8,000 tokens/minute. Two flavors:
+                #   429 — too many requests this minute; waiting helps.
+                #   413 — the request ITSELF is over the minute budget
+                #         (Limit 8000, Requested 9001); only a SMALLER
+                #         request helps. So: trim the history hard (keep
+                #         system + the current question), retry once, and
+                #         if it still fails, stop cleanly instead of
+                #         dumping a raw traceback.
+                if not trimmed_for_limits:
+                    notice("Groq free-tier token limit hit (8,000 tokens/min).")
+                    notice("Trimming conversation history and retrying once…")
+                    messages[:] = _trim_history(messages, keep=2)
+                    trimmed_for_limits = True
+                    continue
+                notice("Still over Groq's free-tier budget after trimming.")
+                notice("Wait a minute, send a shorter request, or raise limits at console.groq.com/settings/billing.")
+                return "(stopped: Groq free-tier token limit — see the messages above.)"
             raise
         message = response.choices[0].message
         messages.append(message)

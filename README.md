@@ -129,7 +129,6 @@ real agent:
 
 - Streaming output + a small GUI (confirmations become buttons — a redesign
   of layer 3, not a wrapper)
-- Automatic history trimming for long sessions
 
 ## License
 
@@ -141,10 +140,11 @@ MIT — see [LICENSE](LICENSE).
 .venv\Scripts\python.exe -m unittest discover tests -v
 ```
 
-39 tests, no extra dependencies. Covers the calculator's AST safety
-guarantee, safe_fs path confinement (Layer 1), the skills loader
-discovery contract, and the prompt-injection defense (Piece 22).
-Runs in under 100ms.
+39 tests + 9 history-trimming tests, no extra dependencies. Covers the
+calculator's AST safety guarantee, safe_fs path confinement (Layer 1),
+the skills loader discovery contract, the prompt-injection defense
+(Piece 22), and the history trimmer's no-orphaned-tool-results rule
+(Piece 23). Runs in under 100ms.
 
 ## Splash art credit
 
