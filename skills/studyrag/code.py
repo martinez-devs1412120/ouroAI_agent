@@ -1,4 +1,11 @@
-"""studyrag skill — query the user's StudyRag vector store."""
+"""studyrag skill — query the user's StudyRag vector store.
+
+SECURITY NOTE: this module uses pickle.loads on disk files in the
+configured store. Pickle is a deserialization hazard — a malicious
+metadata.pkl or vectorizer.pkl can execute arbitrary code at load
+time. We trust these files because they are produced by the user's
+own StudyRag pipeline. NEVER copy a metadata.pkl from an untrusted
+source into the configured store directory."""
 
 import json
 import pickle

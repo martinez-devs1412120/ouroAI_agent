@@ -44,12 +44,18 @@ def _resolve(path_str: str) -> Path:
 
 
 def _log(action: str, args: dict, outcome: str) -> None:
+    """Append one line: when, who (masked), action, args summary, outcome.
+    Hostname and username are masked to 'user' / 'host' so a log shared
+    out-of-band (screenshot, copy/paste) doesn't leak machine identifiers.
+    The original /proc-equivalent user info is also available via sysinfo."""
     PLAYGROUND_ROOT.mkdir(parents=True, exist_ok=True)
     timestamp = _dt.datetime.now().isoformat(timespec="seconds")
-    user = getpass.getuser()
+    user = getpass.getuser()[:1] + "***"  # first letter + *** — visible but masked
     host = socket.gethostname()
+    # Mask hostname beyond the first label: 'laptop.local' -> 'laptop.***'
+    host_masked = host.split(".")[0] + "***" if "." in host else host[:1] + "***"
     args_digest = hashlib.sha256(repr(sorted(args.items())).encode()).hexdigest()[:8]
-    line = f"{timestamp} | {user}@{host} | {action}({args_digest}) | {outcome}\n"
+    line = f"{timestamp} | {user}@{host_masked} | {action}({args_digest}) | {outcome}\n"
     with open(LOG_PATH, "a", encoding="utf-8") as f:
         f.write(line)
 

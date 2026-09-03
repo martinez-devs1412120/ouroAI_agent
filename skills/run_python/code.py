@@ -6,8 +6,10 @@ running code is the most destructive thing this agent can do, so it should
 leave its traces in the exact same place every other dangerous action does."""
 
 import datetime as _dt
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 from skills.safe_fs.code import PLAYGROUND_ROOT, _log
 from ui import confirm as _confirm, paint
@@ -15,6 +17,22 @@ from ui import confirm as _confirm, paint
 RUNS_DIR = PLAYGROUND_ROOT / "_runs"
 TIMEOUT_SECONDS = 15
 MAX_STREAM_CHARS = 4000  # per stream (stdout / stderr); agent.py caps the total
+
+
+def _sweep_stale_runs(directory: Path, max_age_seconds: int) -> None:
+    """Delete run_*.py files older than max_age_seconds. Cheap O(n) sweep
+    over a small directory; safer than unbounded growth."""
+    import time
+    now = time.time()
+    try:
+        for f in directory.glob("run_*.py"):
+            try:
+                if now - f.stat().st_mtime > max_age_seconds:
+                    f.unlink(missing_ok=True)
+            except OSError:
+                pass  # best-effort; never let cleanup kill the run
+    except OSError:
+        pass
 
 
 def run_python(code: str) -> str:
@@ -32,9 +50,14 @@ def run_python(code: str) -> str:
         return "user refused"
 
     # Layer 4: persist the exact source, then run it from the playground.
+    # Use millisecond + pid resolution so two calls in the same second
+    # (e.g. a model doing two parallel writes) don't overwrite each other.
+    # Also: sweep stale scripts older than 24h. Scripts accumulated here
+    # forever otherwise — a slow disk leak.
     RUNS_DIR.mkdir(parents=True, exist_ok=True)
-    ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-    script_path = RUNS_DIR / f"run_{ts}.py"
+    _sweep_stale_runs(RUNS_DIR, max_age_seconds=24 * 3600)
+    ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # YYYYMMDD_HHMMSS_mmm
+    script_path = RUNS_DIR / f"run_{ts}_pid{os.getpid()}.py"
     script_path.write_text(code, encoding="utf-8")
 
     started = _dt.datetime.now()
