@@ -6,7 +6,3 @@ scikit-learn
 markdown
 Pygments
 reportlab
-fastapi
-uvicorn[standard]
-sqlalchemy
-pydantic-settings
